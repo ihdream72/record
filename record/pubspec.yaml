@@ -18,8 +18,21 @@ dependencies:
   record_web: ^1.0.4
   record_windows: ^1.0.2
   record_linux: '>=0.5.0 <1.0.0'
-  record_android: ^1.2.2
-  record_darwin: ^1.1.0
+
+#  record_android: ^1.2.2
+#  record_darwin: ^1.1.0
+
+  record_darwin:
+    git:
+      url: https://github.com/ihdream72/record.git
+      ref: master
+      path: record_darwin
+
+  record_android:
+    git:
+      url: https://github.com/ihdream72/record.git
+      ref: master
+      path: record_android
 
 dev_dependencies:
   # https://pub.dev/packages/flutter_lints
