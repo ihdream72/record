@@ -8,6 +8,8 @@ class RecorderStreamDelegate: NSObject, AudioRecordingStreamDelegate {
 
   func start(config: RecordConfig, recordEventHandler: RecordStreamHandler) throws {
     let audioEngine = AVAudioEngine()
+
+    print("RecorderStreamDelegate-start() called")
     
 #if os(iOS)
     try initAVAudioSession(config: config)
@@ -29,7 +31,9 @@ class RecorderStreamDelegate: NSObject, AudioRecordingStreamDelegate {
     // Set up AGC & echo cancel
     initEffects(config: config, audioEngine: audioEngine)
     
-    let srcFormat = audioEngine.inputNode.outputFormat(forBus: 0)
+    // fix: Exception where format.sampleRate != hwFormat.sampleRate
+    // let srcFormat = audioEngine.inputNode.outputFormat(forBus: 0)
+    let srcFormat = audioEngine.inputNode.inputFormat(forBus: 0)
     
     let dstFormat = AVAudioFormat(
       commonFormat: .pcmFormatInt16,
@@ -63,7 +67,15 @@ class RecorderStreamDelegate: NSObject, AudioRecordingStreamDelegate {
     }
     
     audioEngine.prepare()
-    try audioEngine.start()
+
+    do {
+        try audioEngine.start()
+    } catch {
+        throw RecorderError.error(
+          message: "Failed to audioEngine.start()",
+          details: "Error audioEngine.start()"
+        )
+    }
     
     self.audioEngine = audioEngine
   }

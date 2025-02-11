@@ -81,6 +81,14 @@ func getAudioDeviceIDFromUID(uid: String) -> AudioDeviceID? {
 
   // Get device UID
   for deviceID in deviceIDs {
+
+    // feat(macOS): Support device by deviceID as well as deviceUID
+    // Support lookup by devicezID rather than uid
+    if String(deviceID) == uid {
+      return deviceID
+    }
+
+
     propertyAddress.mSelector = kAudioDevicePropertyDeviceUID
     propertySize = UInt32(MemoryLayout<CFString>.size)
     var deviceUID: Unmanaged<CFString>?
