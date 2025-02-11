@@ -25,7 +25,7 @@ func listInputDevices() -> [AVCaptureDevice] {
   return discoverySession.devices
 }
 
-func getAvailableMicrophones() -> [(id: AudioDeviceID, name: String)] {
+func getAvailableMicrophones() -> [(id: String, name: String)] {
     var devices = [AudioDeviceID]()
     var propertySize = UInt32(0)
 
@@ -35,19 +35,19 @@ func getAvailableMicrophones() -> [(id: AudioDeviceID, name: String)] {
         mElement: kAudioObjectPropertyElementMain
     )
 
-    // 1. 먼저 오디오 장치 개수를 가져온다.
+    // 1. 오디오 장치 개수 가져오기
     var status = AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &propertyAddress, 0, nil, &propertySize)
     guard status == noErr else { return [] }
 
     let deviceCount = Int(propertySize) / MemoryLayout<AudioDeviceID>.size
     if deviceCount == 0 { return [] }
 
-    // 2. 실제 오디오 장치 리스트를 가져온다.
+    // 2. 오디오 장치 리스트 가져오기
     devices = [AudioDeviceID](repeating: 0, count: deviceCount)
     status = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &propertyAddress, 0, nil, &propertySize, &devices)
     guard status == noErr else { return [] }
 
-    var microphoneList = [(id: AudioDeviceID, name: String)]()
+    var microphoneList = [(id: String, name: String)]()
 
     for deviceID in devices {
         var deviceName: CFString = "" as CFString
@@ -59,11 +59,11 @@ func getAvailableMicrophones() -> [(id: AudioDeviceID, name: String)] {
             mElement: kAudioObjectPropertyElementMain
         )
 
-        // 3. 각 오디오 장치의 이름을 가져온다.
+        // 3. 장치 이름 가져오기
         status = AudioObjectGetPropertyData(deviceID, &namePropertyAddress, 0, nil, &nameSize, &deviceName)
         if status != noErr { continue }
 
-        var inputChannels: UInt32 = 0
+//        var inputChannels: UInt32 = 0
         var channelsSize = UInt32(MemoryLayout<UInt32>.size)
 
         var channelsPropertyAddress = AudioObjectPropertyAddress(
@@ -76,9 +76,25 @@ func getAvailableMicrophones() -> [(id: AudioDeviceID, name: String)] {
         status = AudioObjectGetPropertyDataSize(deviceID, &channelsPropertyAddress, 0, nil, &channelsSize)
         if status != noErr || channelsSize == 0 { continue }
 
-        let isDuplicate = microphoneList.contains { $0.name == (deviceName as String) }
+        // 5. 오디오 장치의 UID 가져오기 (고유 ID)
+        var deviceUID: CFString = "" as CFString
+        var uidSize = UInt32(MemoryLayout<CFString>.size)
+
+        var uidPropertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceUID,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        status = AudioObjectGetPropertyData(deviceID, &uidPropertyAddress, 0, nil, &uidSize, &deviceUID)
+        if status != noErr { continue }
+
+        let idString = deviceUID as String
+        let nameString = deviceName as String
+
+        let isDuplicate = microphoneList.contains { $0.id == idString }
         if !isDuplicate {
-            microphoneList.append((id: deviceID, name: deviceName as String))
+            microphoneList.append((id: idString, name: nameString))
         }
     }
 
