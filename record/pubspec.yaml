@@ -18,8 +18,20 @@ dependencies:
   record_web: ^1.1.4
   record_windows: ^1.0.4
   record_linux: '>=0.5.0 <1.0.0'
-  record_android: ^1.3.0
-  record_darwin: ^1.2.0
+
+  # wdragon 아래 두개의 PlugIn을 수정하여 별도의 Repository 로 변경
+#  record_android: ^1.3.0
+#  record_darwin: ^1.2.0
+  record_darwin:
+    git:
+      url: https://github.com/ihdream72/record.git
+      ref: 73087f8f7516a78f7545bc3b3f02871fb3d97612
+      path: record_darwin
+  record_android:
+    git:
+      url: https://github.com/ihdream72/record.git
+      ref: 73087f8f7516a78f7545bc3b3f02871fb3d97612
+      path: record_android
 
 dev_dependencies:
   # https://pub.dev/packages/flutter_lints
