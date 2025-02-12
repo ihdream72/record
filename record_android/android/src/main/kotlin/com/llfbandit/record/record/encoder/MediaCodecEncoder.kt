@@ -5,11 +5,13 @@ import android.media.MediaFormat
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Message
+import android.util.Log
 import com.llfbandit.record.record.RecordConfig
 import com.llfbandit.record.record.container.IContainerWriter
 import com.llfbandit.record.record.format.Format
 import java.util.LinkedList
 import java.util.concurrent.Semaphore
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.min
 
 class MediaCodecEncoder(
@@ -17,48 +19,48 @@ class MediaCodecEncoder(
     private val format: Format,
     private val mediaFormat: MediaFormat,
     private val listener: EncoderListener,
-    codec: String,
+    private val codec: String,
 ) : IEncoder,
     HandlerThread("MediaCodecEncoder Thread"),
     Handler.Callback {
-    private lateinit var mHandler: Handler
-    private val mCodec: MediaCodec = MediaCodec.createByCodecName(codec)
+    private var mHandler: Handler? = null
+    private var mCodec: MediaCodec? = null
+    private var mContainer: IContainerWriter? = null
     private val mQueue = LinkedList<Sample>()
     private var mRate = 0f // bytes per us
     private var mInputBufferPosition: Long = 0
     private var mInputBufferIndex = -1
-    private lateinit var mContainer: IContainerWriter
     private var mContainerTrack = 0
 
     // Semaphore to signal the end of encoding
-    private var mFinishedCompleter: Semaphore? = null
-    private var mFinished = false
+    private var mStoppedCompleter: Semaphore? = null
+    private var mStopped = AtomicBoolean(false)
 
     override fun encode(bytes: ByteArray) {
-        if (mFinished) {
+        if (mStopped.get()) {
             return
         }
 
         val s = Sample()
         s.bytes = bytes
-        mHandler.obtainMessage(MSG_ENCODE_INPUT, s).sendToTarget()
+        mHandler?.obtainMessage(MSG_ENCODE_INPUT, s)?.sendToTarget()
     }
 
     override fun startEncoding() {
         start() // Start the thread
 
         mHandler = Handler(looper, this)
-        mHandler.obtainMessage(MSG_INIT).sendToTarget()
+        mHandler?.obtainMessage(MSG_INIT)?.sendToTarget()
     }
 
     override fun stopEncoding() {
-        if (mFinished) {
+        if (mStopped.get()) {
             return
         }
+        mStopped.set(true)
 
-        mFinished = true
         val completer = Semaphore(0)
-        mHandler.obtainMessage(MSG_STOP, completer).sendToTarget()
+        mHandler?.obtainMessage(MSG_STOP, completer)?.sendToTarget()
 
         try {
             // Wait for the encoder to finish
@@ -72,14 +74,16 @@ class MediaCodecEncoder(
         if (msg.what == MSG_INIT) {
             initEncoding()
         } else if (msg.what == MSG_STOP) {
-            mFinishedCompleter = msg.obj as Semaphore
+            mStoppedCompleter = msg.obj as Semaphore
             if (mInputBufferIndex >= 0) {
                 processInputBuffer()
             }
         } else if (msg.what == MSG_ENCODE_INPUT) {
-            mQueue.addLast(msg.obj as Sample)
-            if (mInputBufferIndex >= 0) {
-                processInputBuffer()
+            if (!mStopped.get()) {
+                mQueue.addLast(msg.obj as Sample)
+                if (mInputBufferIndex >= 0) {
+                    processInputBuffer()
+                }
             }
         }
 
@@ -87,43 +91,52 @@ class MediaCodecEncoder(
     }
 
     private fun initEncoding() {
+        calculateInputRate()
+
         try {
-            calculateInputRate()
+            mCodec = MediaCodec.createByCodecName(codec)
+            mCodec?.setCallback(AudioRecorderCodecCallback(), Handler(looper))
+            mCodec?.configure(mediaFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            mCodec?.start()
+        } catch (e: Exception) {
+            mCodec?.release()
+            mCodec = null
+            onError(e)
+            return
+        }
 
-            mCodec.setCallback(AudioRecorderCodecCallback(), Handler(looper))
-            mCodec.configure(mediaFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-            mCodec.start()
-
+        try {
             mContainer = format.getContainer(config.path)
-            mContainerTrack = mContainer.addTrack(mCodec.outputFormat)
-            mContainer.start()
         } catch (e: Exception) {
             onError(e)
         }
     }
 
     private fun processInputBuffer() {
+        val codec = mCodec ?: return
+
         try {
             val s = mQueue.peekFirst()
             if (s == null) {
                 // There's no more data to encode.
-                if (mFinishedCompleter != null) {
+                if (mStoppedCompleter != null) {
                     // We're done, so send EOS
-                    mCodec.queueInputBuffer(
+                    codec.queueInputBuffer(
                         mInputBufferIndex, 0, 0,
                         getPresentationTimestampUs(mInputBufferPosition),
                         MediaCodec.BUFFER_FLAG_END_OF_STREAM
                     )
+                    mInputBufferIndex = -1 // Reset index after sending EOS
                 }
                 return
             }
 
-            val b = mCodec.getInputBuffer(mInputBufferIndex)!!
+            val b = codec.getInputBuffer(mInputBufferIndex)!!
             val sz = min(b.capacity().toDouble(), (s.bytes.size - s.offset).toDouble()).toInt()
             val ts = getPresentationTimestampUs(mInputBufferPosition)
-
             b.put(s.bytes, s.offset, sz)
-            mCodec.queueInputBuffer(mInputBufferIndex, 0, sz, ts, 0)
+
+            codec.queueInputBuffer(mInputBufferIndex, 0, sz, ts, 0)
 
             mInputBufferPosition += sz.toLong()
             s.offset += sz
@@ -140,16 +153,16 @@ class MediaCodecEncoder(
         }
     }
 
-    private fun processOutputBuffer(index: Int, info: MediaCodec.BufferInfo) {
+    private fun processOutputBuffer(codec: MediaCodec, index: Int, info: MediaCodec.BufferInfo) {
         try {
-            val outputBuffer = mCodec.getOutputBuffer(index)!!
-
-            mContainer.writeSampleData(mContainerTrack, outputBuffer, info)
-
-            mCodec.releaseOutputBuffer(index, false)
+            val outputBuffer = codec.getOutputBuffer(index)
+            if (outputBuffer != null) {
+                mContainer?.writeSampleData(mContainerTrack, outputBuffer, info)
+            }
+            codec.releaseOutputBuffer(index, false)
 
             if ((info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
-                finish()
+                stopAndRelease()
             }
         } catch (e: Exception) {
             onError(e)
@@ -157,22 +170,22 @@ class MediaCodecEncoder(
     }
 
     private fun onError(e: Exception) {
-        mFinished = true
+        mStopped.set(true)
         stopAndRelease()
         listener.onEncoderFailure(e)
     }
 
-    private fun finish() {
-        stopAndRelease()
-        mFinishedCompleter?.release()
-    }
-
     private fun stopAndRelease() {
-        mCodec.stop()
-        mCodec.release()
+        mCodec?.stop()
+        mCodec?.release()
+        mCodec = null
 
-        mContainer.stop()
-        mContainer.release()
+        mContainer?.stop()
+        mContainer?.release()
+        mContainer = null
+
+        mStoppedCompleter?.release()
+        mStoppedCompleter = null
     }
 
     private fun calculateInputRate() {
@@ -198,7 +211,7 @@ class MediaCodecEncoder(
             index: Int,
             info: MediaCodec.BufferInfo
         ) {
-            processOutputBuffer(index, info)
+            processOutputBuffer(codec, index, info)
         }
 
         override fun onError(codec: MediaCodec, e: MediaCodec.CodecException) {
@@ -206,7 +219,10 @@ class MediaCodecEncoder(
         }
 
         override fun onOutputFormatChanged(codec: MediaCodec, format: MediaFormat) {
-            // Do nothing. Format will never change as we set output format from codec.
+            mContainerTrack = mContainer?.addTrack(format) ?: -1
+            mContainer?.start()
+
+            Log.d("MediaCodecEncoder", "Output format set: $format")
         }
     }
 

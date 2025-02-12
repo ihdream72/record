@@ -1,16 +1,11 @@
-import CoreAudio
 import AVFoundation
 import Foundation
 
 func listInputs() throws -> [Device] {
   var devices: [Device] = []
 
-//  listInputDevices().forEach { input in
-//    devices.append(Device(id: input.uniqueID, label: input.localizedName))
-//  }
-
-  getAvailableMicrophones().forEach { input in
-    devices.append(Device(id: input.id, label: input.name))
+  listInputDevices().forEach { input in
+    devices.append(Device(id: input.uniqueID, label: input.localizedName))
   }
   
   return devices
@@ -23,82 +18,6 @@ func listInputDevices() -> [AVCaptureDevice] {
   )
   
   return discoverySession.devices
-}
-
-func getAvailableMicrophones() -> [(id: String, name: String)] {
-    var devices = [AudioDeviceID]()
-    var propertySize = UInt32(0)
-
-    var propertyAddress = AudioObjectPropertyAddress(
-        mSelector: kAudioHardwarePropertyDevices,
-        mScope: kAudioObjectPropertyScopeGlobal,
-        mElement: kAudioObjectPropertyElementMain
-    )
-
-    // 1. 오디오 장치 개수 가져오기
-    var status = AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &propertyAddress, 0, nil, &propertySize)
-    guard status == noErr else { return [] }
-
-    let deviceCount = Int(propertySize) / MemoryLayout<AudioDeviceID>.size
-    if deviceCount == 0 { return [] }
-
-    // 2. 오디오 장치 리스트 가져오기
-    devices = [AudioDeviceID](repeating: 0, count: deviceCount)
-    status = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &propertyAddress, 0, nil, &propertySize, &devices)
-    guard status == noErr else { return [] }
-
-    var microphoneList = [(id: String, name: String)]()
-
-    for deviceID in devices {
-        var deviceName: CFString = "" as CFString
-        var nameSize = UInt32(MemoryLayout<CFString>.size)
-
-        var namePropertyAddress = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyDeviceNameCFString,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-
-        // 3. 장치 이름 가져오기
-        status = AudioObjectGetPropertyData(deviceID, &namePropertyAddress, 0, nil, &nameSize, &deviceName)
-        if status != noErr { continue }
-
-//        var inputChannels: UInt32 = 0
-        var channelsSize = UInt32(MemoryLayout<UInt32>.size)
-
-        var channelsPropertyAddress = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyStreamConfiguration,
-            mScope: kAudioDevicePropertyScopeInput,
-            mElement: kAudioObjectPropertyElementMain
-        )
-
-        // 4. 입력 채널이 있는지 확인 (마이크인지 판별)
-        status = AudioObjectGetPropertyDataSize(deviceID, &channelsPropertyAddress, 0, nil, &channelsSize)
-        if status != noErr || channelsSize == 0 { continue }
-
-        // 5. 오디오 장치의 UID 가져오기 (고유 ID)
-        var deviceUID: CFString = "" as CFString
-        var uidSize = UInt32(MemoryLayout<CFString>.size)
-
-        var uidPropertyAddress = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyDeviceUID,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-
-        status = AudioObjectGetPropertyData(deviceID, &uidPropertyAddress, 0, nil, &uidSize, &deviceUID)
-        if status != noErr { continue }
-
-        let idString = deviceUID as String
-        let nameString = deviceName as String
-
-        let isDuplicate = microphoneList.contains { $0.id == idString }
-        if !isDuplicate {
-            microphoneList.append((id: idString, name: nameString))
-        }
-    }
-
-    return microphoneList
 }
 
 func getInputDevice(device: Device?) throws -> AVCaptureDeviceInput? {
@@ -162,13 +81,10 @@ func getAudioDeviceIDFromUID(uid: String) -> AudioDeviceID? {
 
   // Get device UID
   for deviceID in deviceIDs {
-
-    // feat(macOS): Support device by deviceID as well as deviceUID
     // Support lookup by devicezID rather than uid
     if String(deviceID) == uid {
       return deviceID
     }
-
 
     propertyAddress.mSelector = kAudioDevicePropertyDeviceUID
     propertySize = UInt32(MemoryLayout<CFString>.size)

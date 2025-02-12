@@ -30,13 +30,22 @@ External dependencies:
 | aacHe           | ✔️            |         |   ?     |         |         |  ✔️ 
 | amrNb           | ✔️            |         |  ?      |   ✔️    |         |  
 | amrWb           | ✔️            |         |  ?      |          |        |  
-| opus            | ✔️            |         |  ✔️ 3   |         |         |  ✔️ 
+| opus            | ✔️            |         |  ?    |         |         |  ✔️ 
 | wav             | ✔️ 2          |   ✔️    |   ✔️   |    ✔️    |   ✔️  |   ✔️ 
 | flac            | ✔️ 2          |    ✔️    |  ?     |  ✔️     |   ✔️   |   ✔️
 | pcm16bits       | ✔️ 2          |   ✔️    |  ✔️    |   ✔️    |  ✔️    |  
 
-* Question marks (?) in web column mean that the formats are supported by the plugin
-but are not available in current (and tested) browsers (Chrome / Firefox).
+?: from my testings:
+| Encoder         | Firefox    | Chrome based   | Safari
+|-----------------|------------|----------------|---------
+| aacLc           |            |                |  ✔️*
+| opus            | ✔️*        |   ✔️*           | 
+| wav             | ✔️        |   ✔️           |   ✔️
+| pcm16bits       | ✔️        |   ✔️           |  ✔️
+
+\* Sample rate output is determined by your settings in OS. Bit depth is likely 32 bits.
+
+wav and pcm16bits are provided by the package directly.
 
 ## Stream
 | Encoder         | Android    | iOS     | web     | Windows | macOS   | linux
@@ -49,7 +58,6 @@ but are not available in current (and tested) browsers (Chrome / Firefox).
 \* AAC is streamed with raw AAC with ADTS headers, so it's directly readable through a file!  
 1. Bluetooth telephony device link (SCO) is automatically done but there's no phone call management.
 2. Unsupported on legacy Android recorder.
-3. Sample rate output is determined by your settings in OS. Bit depth is likely 32 bits.
 
 ## Usage
 
@@ -63,7 +71,7 @@ if (await record.hasPermission()) {
   // Start recording to file
   await record.start(const RecordConfig(), path: 'aFullPath/myFile.m4a');
   // ... or to stream
-  final stream = await record.startStream(const RecordConfig(AudioEncoder.pcm16bits));
+  final stream = await record.startStream(const RecordConfig(encoder: AudioEncoder.pcm16bits));
 }
 
 // Stop recording...
@@ -77,7 +85,7 @@ record.dispose(); // As always, don't forget this one.
 ## Setup, permissions and others
 
 ### Android
-Plugin targets API level 34 uses Java 17. Follow [Gradle setup](https://github.com/llfbandit/record/blob/master/record_android/README.md) if needed.
+Follow [Gradle setup](https://github.com/llfbandit/record/blob/master/record_android/README.md) if needed.
 
 ```xml
 <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -89,6 +97,14 @@ Plugin targets API level 34 uses Java 17. Follow [Gradle setup](https://github.c
 - min SDK: 23 (amrNb/amrWb: 26, Opus: 29)
 
 * [Audio formats sample rate hints](https://developer.android.com/guide/topics/media/media-formats#audio-formats)
+
+Effects (auto gain, echo cancel and noise suppressor) may be unvailable for a specific device.  
+Please, stop opening issues if it doesn't work for one device but for the others.
+
+There is no gain settings to play with, so you cannot control the volume of the audio being recorded.  
+The low volume of the audio is related to the hardware and varies from device to device.
+
+Applying effects will lower the output volume. Choosing source other than default or mic will likely lower the output volume also.
 
 ### iOS
 ```xml
@@ -111,3 +127,9 @@ Plugin targets API level 34 uses Java 17. Follow [Gradle setup](https://github.c
 ```
 
 - min SDK: 10.15
+
+### Web
+
+Web platform uses package web >=0.5.1 which is shipped with Flutter >=3.22.
+
+This platform is still available with previous Flutter versions but continuous work is done from this version only.

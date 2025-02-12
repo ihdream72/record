@@ -1,29 +1,5 @@
-/*
-*
-* https://learn.microsoft.com/en-us/windows/uwp/audio-video-camera/codec-query
-* https://learn.microsoft.com/en-us/uwp/api/windows.media.core.codecsubtypes?view=winrt-22621
-*
-* https://github.com/microsoft/Windows-universal-samples/blob/main/Samples/CameraStarterKit/cpp/MainPage.xaml.h
-* https://github.com/microsoft/Windows-universal-samples/blob/main/Samples/CameraStarterKit/cpp/MainPage.xaml.cpp
-*
-* https://learn.microsoft.com/en-us/windows/win32/medfound/audio-video-capture
-* WMF FLAC https://stackoverflow.com/questions/48930499/how-do-i-encode-raw-48khz-32bits-pcm-to-flac-using-microsoft-media-foundation
-* WMF AAC https://learn.microsoft.com/en-us/windows/win32/medfound/aac-encoder
-* WMF https://learn.microsoft.com/en-us/windows/win32/medfound/audio-video-capture-in-media-foundation
-* https://learn.microsoft.com/en-us/windows/win32/medfound/tutorial--using-the-sink-writer-to-encode-video
-* https://learn.microsoft.com/en-us/windows/win32/medfound/audio-subtype-guids
-* https://github.com/microsoft/Windows-classic-samples/tree/main/Samples/Win7Samples/multimedia/mediafoundation/wavsink
-* https://learn.microsoft.com/fr-fr/windows/win32/api/_mf/
-* https://stackoverflow.com/questions/12917256/windows-media-foundation-recording-audio
-* https://github.com/sipsorcery/mediafoundationsamples/blob/master/MFAudioCaptureToSAR/MFAudioCaptureToSAR.cpp
-* https://chromium-review.googlesource.com/c/chromium/src/+/3293969
-*
-* https://learn.microsoft.com/en-us/windows/win32/medfound/uncompressed-audio-media-types
-*
-* https://learn.microsoft.com/en-us/windows/win32/medfound/tutorial--encoding-an-mp4-file-
-*/
-
 #include "record.h"
+#include "record_windows_plugin.h"
 
 namespace record_windows
 {
@@ -53,7 +29,7 @@ namespace record_windows
 		m_pPresentationDescriptor(NULL),
 		m_stateEventHandler(stateEventHandler),
 		m_recordEventHandler(recordEventHandler),
-		m_recordingPath(std::string()),
+		m_recordingPath(std::wstring()),
 		m_pMediaType(NULL)
 	{
 	}
@@ -63,7 +39,7 @@ namespace record_windows
 		Dispose();
 	}
 
-	HRESULT Recorder::Start(std::unique_ptr<RecordConfig> config, std::string path)
+	HRESULT Recorder::Start(std::unique_ptr<RecordConfig> config, std::wstring path)
 	{
 		bool supported = false;
 		HRESULT hr = isEncoderSupported(config->encoderName, &supported);
@@ -209,11 +185,34 @@ namespace record_windows
 
 	HRESULT Recorder::Stop()
 	{
+		if (m_dataWritten == 0)
+		{
+			return Cancel();
+		}
+
 		HRESULT hr = EndRecording();
 
 		if (SUCCEEDED(hr))
 		{
 			UpdateState(RecordState::stop);
+		}
+
+		return hr;
+	}
+
+	HRESULT Recorder::Cancel()
+	{
+		auto recordingPath = GetRecordingPath();
+		HRESULT hr = EndRecording();
+
+		if (SUCCEEDED(hr))
+		{
+			UpdateState(RecordState::stop);
+
+			if (!recordingPath.empty())
+			{
+				DeleteFile(recordingPath.c_str());
+			}
 		}
 
 		return hr;
@@ -288,7 +287,7 @@ namespace record_windows
 		SafeRelease(m_pWriter);
 		SafeRelease(m_pMediaType);
 		m_pConfig = nullptr;
-		m_recordingPath = std::string();
+		m_recordingPath = std::wstring();
 
 		return hr;
 	}
@@ -308,7 +307,9 @@ namespace record_windows
 		m_recordState = state;
 
 		if (m_stateEventHandler) {
-			m_stateEventHandler->Success(std::make_unique<flutter::EncodableValue>(state));
+			RecordWindowsPlugin::RunOnMainThread([this, state]() -> void {
+				m_stateEventHandler->Success(std::make_unique<flutter::EncodableValue>(state));
+			});
 		}
 	}
 
@@ -380,15 +381,14 @@ namespace record_windows
 		return hr;
 	}
 
-	HRESULT Recorder::CreateSinkWriter(std::string path)
+	HRESULT Recorder::CreateSinkWriter(std::wstring path)
 	{
 		IMFSinkWriter* pSinkWriter = NULL;
 		IMFMediaType* pMediaTypeOut = NULL;
 		IMFMediaType* pMediaTypeIn = NULL;
 		DWORD          streamIndex = 0;
 
-		std::wstring wsPath = std::wstring(path.begin(), path.end());
-		HRESULT hr = MFCreateSinkWriterFromURL(wsPath.c_str(), NULL, NULL, &pSinkWriter);
+		HRESULT hr = MFCreateSinkWriterFromURL(path.c_str(), NULL, NULL, &pSinkWriter);
 
 		// Set the output media type.
 		if (SUCCEEDED(hr))
@@ -470,7 +470,7 @@ namespace record_windows
 		}
 	}
 
-	std::string Recorder::GetRecordingPath()
+	std::wstring Recorder::GetRecordingPath()
 	{
 		return m_recordingPath;
 	}

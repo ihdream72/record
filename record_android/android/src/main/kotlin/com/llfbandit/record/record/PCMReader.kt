@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaFormat
-import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
@@ -13,7 +12,6 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.abs
 import kotlin.math.log10
-
 
 class PCMReader(
     // Config to setup the recording
@@ -59,20 +57,17 @@ class PCMReader(
     @Throws(Exception::class)
     fun read(): ByteArray {
         val buffer = ByteArray(bufferSize)
-        val resultBytes = reader.read(buffer, 0, bufferSize)
+        val resultBytes = reader.read(buffer, 0, buffer.size)
         if (resultBytes < 0) {
             throw Exception(getReadFailureReason(resultBytes))
         }
 
-        val audioBuffer = ByteArray(resultBytes)
-        System.arraycopy(buffer, 0, audioBuffer, 0, resultBytes)
-
         if (resultBytes > 0) {
             // Update amplitude
-            amplitude = getAmplitude(audioBuffer, resultBytes)
+            amplitude = getAmplitude(buffer, resultBytes)
         }
 
-        return audioBuffer
+        return buffer
     }
 
     fun getAmplitude(): Double {
@@ -94,7 +89,7 @@ class PCMReader(
 
         val reader = try {
             AudioRecord(
-                MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+                config.audioSource,
                 sampleRate,
                 channels,
                 audioFormat,
@@ -143,32 +138,39 @@ class PCMReader(
         }
 
         // Stay away from minimal buffer
-        return bufferSize * 4
+        return bufferSize * 2
     }
 
     private fun enableAutomaticGainControl() {
-        if (config.autoGain && AutomaticGainControl.isAvailable()) {
+        if (AutomaticGainControl.isAvailable()) {
             automaticGainControl = AutomaticGainControl.create(reader.audioSessionId)
-            automaticGainControl?.enabled = true
+            automaticGainControl?.enabled = config.autoGain
+        } else if (config.autoGain) {
+            Log.d(TAG, "Auto gain effect is not available.")
         }
     }
 
     private fun enableNoiseSuppressor() {
-        if (config.noiseSuppress && NoiseSuppressor.isAvailable()) {
+        if (NoiseSuppressor.isAvailable()) {
             noiseSuppressor = NoiseSuppressor.create(reader.audioSessionId)
-            noiseSuppressor?.enabled = true
+            noiseSuppressor?.enabled = config.noiseSuppress
+        } else if (config.noiseSuppress) {
+            Log.d(TAG, "Noise suppressor effect is not available.")
         }
     }
 
     private fun enableEchoSuppressor() {
-        if (config.echoCancel && AcousticEchoCanceler.isAvailable()) {
+        if (AcousticEchoCanceler.isAvailable()) {
             acousticEchoCanceler = AcousticEchoCanceler.create(reader.audioSessionId)
-            acousticEchoCanceler?.enabled = true
+            acousticEchoCanceler?.enabled = config.echoCancel
+        } else if (config.echoCancel) {
+            Log.d(TAG, "Echo canceler effect is not available.")
         }
     }
 
     private fun getReadFailureReason(errorCode: Int): String {
-        val str = StringBuilder("Error when reading audio data:\n")
+        val str = StringBuilder("Error when reading audio data:").appendLine()
+
         when (errorCode) {
             AudioRecord.ERROR_INVALID_OPERATION -> str.append("ERROR_INVALID_OPERATION: Failure due to the improper use of a method.")
             AudioRecord.ERROR_BAD_VALUE -> str.append("ERROR_BAD_VALUE: Failure due to the use of an invalid value.")
@@ -176,24 +178,24 @@ class PCMReader(
             AudioRecord.ERROR -> str.append("ERROR: Generic operation failure")
             else -> str.append("Unknown errorCode: (").append(errorCode).append(")")
         }
+
         return str.toString()
     }
 
     // Assuming the input is signed int 16
     private fun getAmplitude(chunk: ByteArray, size: Int): Double {
-        var maxSample = -160
+        var max = -160
 
-        val byteBuffer = ByteBuffer.wrap(chunk, 0, size)
         val buf = ShortArray(size / 2)
-        byteBuffer.order(ByteOrder.nativeOrder()).asShortBuffer()[buf]
+        ByteBuffer.wrap(chunk, 0, size).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()[buf]
 
         for (b in buf) {
             val curSample = abs(b.toInt())
-            if (curSample > maxSample) {
-                maxSample = curSample
+            if (curSample > max) {
+                max = curSample
             }
         }
 
-        return 20 * log10(maxSample / 32767.0) // 16 signed bits 2^15 - 1
+        return 20 * log10(max / 32767.0) // 16 signed bits 2^15 - 1
     }
 }
