@@ -25,7 +25,7 @@ dependencies:
   record_darwin:
     git:
       url: https://github.com/ihdream72/record.git
-      ref: c44742f0bf959b3fc5cf279b4a9afa3f6c9b9442
+      ref: dc444d6c2c3408e6ec0d255e31f028298dbf9817
       path: record_darwin
   record_android:
     git:
