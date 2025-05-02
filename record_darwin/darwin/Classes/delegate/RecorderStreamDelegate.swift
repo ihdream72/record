@@ -135,8 +135,72 @@ class RecorderStreamDelegate: NSObject, AudioRecordingStreamDelegate {
     
     return bytes
   }
-  
+
   private func stream(
+    buffer: AVAudioPCMBuffer,
+    dstFormat: AVAudioFormat,
+    converter: AVAudioConverter,
+    recordEventHandler: RecordStreamHandler
+  ) -> Void {
+    let inputCallback: AVAudioConverterInputBlock = { inNumPackets, outStatus in
+      outStatus.pointee = .haveData
+      return buffer
+    }
+
+    // 안전한 frameCapacity 설정
+    let capacity = UInt32(dstFormat.sampleRate / buffer.format.sampleRate * Double(buffer.frameLength))
+
+    guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: dstFormat, frameCapacity: capacity) else {
+      print("❌ Unable to create output buffer")
+      stop { _ in }
+      return
+    }
+
+    var error: NSError? = nil
+    converter.convert(to: convertedBuffer, error: &error, withInputFrom: inputCallback)
+    if let err = error {
+      print("❌ Conversion error: \(err)")
+      return
+    }
+
+    // 실제 변환된 frame 수
+    let frameLength = Int(convertedBuffer.frameLength)
+    let channelCount = Int(dstFormat.channelCount)
+
+    guard let channelData = convertedBuffer.int16ChannelData else {
+      print("❌ Channel data is nil")
+      return
+    }
+
+    var samples = [Int16]()
+
+    if dstFormat.isInterleaved {
+      // Interleaved: 샘플이 L, R, L, R, ...
+      let dataPtr = UnsafeBufferPointer(start: channelData.pointee, count: frameLength * channelCount)
+
+      for i in 0..<frameLength {
+        let sample = dataPtr[i * channelCount] // Left 채널만 추출
+        samples.append(sample)
+      }
+    } else {
+      // Non-interleaved: 채널 별로 분리됨
+      let leftChannelPtr = channelData[0]
+      for i in 0..<frameLength {
+        samples.append(leftChannelPtr[i])
+      }
+    }
+
+    updateAmplitude(samples)
+
+    if let eventSink = recordEventHandler.eventSink {
+      let bytes = samples.withUnsafeBytes { Data($0) }
+      DispatchQueue.main.async {
+        eventSink(FlutterStandardTypedData(bytes: bytes))
+      }
+    }
+  }
+  
+  /*private func stream(
     buffer: AVAudioPCMBuffer,
     dstFormat: AVAudioFormat,
     converter: AVAudioConverter,
@@ -183,7 +247,7 @@ class RecorderStreamDelegate: NSObject, AudioRecordingStreamDelegate {
         }
       }
     }
-  }
+  }*/
   
   // Set up AGC & echo cancel
   private func setVoiceProcessing(echoCancel: Bool, autoGain: Bool, audioEngine: AVAudioEngine) throws {
