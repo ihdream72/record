@@ -12,3 +12,4 @@ pubspec.lock
 # melos
 pubspec_overrides.yaml
 .DS_Store
+.idea

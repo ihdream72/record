@@ -180,9 +180,9 @@ public class SwiftRecordPlugin: NSObject, FlutterPlugin {
       return nil
     }
     
-    var device: Device? = nil
+    var device: AudioInputDevice? = nil
     if let deviceMap = args["device"] as? [String : Any] {
-      device = Device(map: deviceMap)
+      device = AudioInputDevice(map: deviceMap)
     }
 
     var iosConfig: IosConfig? = nil

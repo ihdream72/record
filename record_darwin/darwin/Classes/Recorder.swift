@@ -94,7 +94,7 @@ class Recorder {
     return m_state != .stop
   }
   
-  func listInputDevices() throws -> [Device] {
+  func listInputDevices() throws -> [AudioInputDevice] {
     return try listInputs()
   }
   

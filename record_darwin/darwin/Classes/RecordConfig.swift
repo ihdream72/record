@@ -17,7 +17,7 @@ public class RecordConfig {
   let bitRate: Int
   let sampleRate: Int
   let numChannels: Int
-  let device: Device?
+  let device: AudioInputDevice?
   let autoGain: Bool
   let echoCancel: Bool
   let noiseSuppress: Bool
@@ -27,7 +27,7 @@ public class RecordConfig {
        bitRate: Int,
        sampleRate: Int,
        numChannels: Int,
-       device: Device? = nil,
+       device: AudioInputDevice? = nil,
        autoGain: Bool = false,
        echoCancel: Bool = false,
        noiseSuppress: Bool = false,
@@ -45,7 +45,7 @@ public class RecordConfig {
   }
 }
 
-public class Device {
+public class AudioInputDevice {
   let id: String
   let label: String
 

@@ -40,10 +40,10 @@ dependencies:
     path: ../record_windows
   record_android:
     path: ../record_android
-  record_web:
-    path: ../record_web
-  record_linux:
-    path: ../record_linux
+#  record_web:
+#    path: ../record_web
+#  record_linux:
+#    path: ../record_linux
 
 dev_dependencies:
   # https://pub.dev/packages/flutter_lints
@@ -57,11 +57,11 @@ flutter:
         default_package: record_android
       ios:
         default_package: record_darwin
-      web:
-        default_package: record_web
+#      web:
+#        default_package: record_web
       windows:
         default_package: record_windows
       macos:
         default_package: record_darwin
-      linux:
-        default_package: record_linux
+#      linux:
+#        default_package: record_linux
